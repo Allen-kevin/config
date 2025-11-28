@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# 脚本用法说明
+usage() {
+    echo "用法: $0 [选项] <目标脚本路径>"
+    echo "选项:"
+    echo "  -n <次数>    重复执行的次数（默认：无限次，需手动终止）"
+    echo "  -i <秒数>    每次执行的间隔时间（默认：1秒）"
+    echo "  -h           显示帮助信息"
+    echo ""
+    echo "示例:"
+    echo "  $0 ./test.sh          # 无限次重复执行 test.sh，间隔1秒"
+    echo "  $0 -n 10 -i 2 ./run.sh # 重复执行 run.sh 10次，间隔2秒"
+}
+
+# 默认参数
+REPEAT_COUNT=-1  # -1 表示无限次
+INTERVAL=1       # 默认间隔1秒
+TARGET_SCRIPT=""
+
+# 解析命令行参数
+while getopts "n:i:h" opt; do
+    case $opt in
+        n)
+            REPEAT_COUNT=$OPTARG
+            # 校验次数是否为正整数
+            if ! [[ $REPEAT_COUNT =~ ^[0-9]+$ ]]; then
+                echo "错误：-n 参数必须是正整数！"
+                exit 1
+            fi
+            ;;
+        i)
+            INTERVAL=$OPTARG
+            # 校验间隔是否为非负整数/小数
+            if ! [[ $INTERVAL =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                echo "错误：-i 参数必须是非负数字（整数或小数）！"
+                exit 1
+            fi
+            ;;
+        h)
+            usage
+            exit 0
+            ;;
+        \?)
+            echo "错误：无效选项 -$OPTARG"
+            usage
+            exit 1
+            ;;
+        :)
+            echo "错误：选项 -$OPTARG 需要参数！"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# 获取目标脚本路径（移除已解析的选项参数）
+shift $((OPTIND - 1))
+TARGET_SCRIPT=$1
+
+# 校验目标脚本是否存在且可执行
+if [ -z "$TARGET_SCRIPT" ]; then
+    echo "错误：必须指定目标脚本路径！"
+    usage
+    exit 1
+fi
+
+if [ ! -f "$TARGET_SCRIPT" ]; then
+    echo "错误：脚本 '$TARGET_SCRIPT' 不存在！"
+    exit 1
+fi
+
+if [ ! -x "$TARGET_SCRIPT" ]; then
+    echo "警告：脚本 '$TARGET_SCRIPT' 不可执行，尝试添加执行权限..."
+    chmod +x "$TARGET_SCRIPT"
+    # 再次检查
+    if [ ! -x "$TARGET_SCRIPT" ]; then
+        echo "错误：无法添加执行权限，请手动执行 chmod +x $TARGET_SCRIPT"
+        exit 1
+    fi
+fi
+
+# 执行循环
+echo "开始重复执行脚本：$TARGET_SCRIPT"
+echo "重复次数：$(if [ $REPEAT_COUNT -eq -1 ]; then echo "无限次"; else echo $REPEAT_COUNT次; fi)"
+echo "执行间隔：$INTERVAL 秒"
+echo "----------------------------------------"
+
+count=0
+while true; do
+    count=$((count + 1))
+    
+    # 打印当前执行信息
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 执行第 $count 次..."
+    # 执行目标脚本，并传递后续参数（如果有）
+    "$TARGET_SCRIPT" "${@:2}"
+    
+    # 检查退出状态
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo "警告：脚本执行失败，退出码：$exit_code"
+    fi
+    
+    # 判断是否达到指定次数
+    if [ $REPEAT_COUNT -ne -1 ] && [ $count -ge $REPEAT_COUNT ]; then
+        break
+    fi
+    
+    # 间隔等待（最后一次无需等待）
+    if [ $REPEAT_COUNT -eq -1 ] || [ $count -lt $REPEAT_COUNT ]; then
+        sleep $INTERVAL
+    fi
+done
+
+echo "----------------------------------------"
+echo "执行完成！共执行 $count 次"
